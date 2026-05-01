@@ -2,7 +2,7 @@ cache/
 out/
 broadcast/
 node_modules/
-apps/web/node_modules/
-apps/web/dist/
 .env
-apps/web/.env
+
+# If `apps/web` was removed from the repo but Windows left a locked `node_modules`, delete the folder locally after closing dev servers.
+apps/web/node_modules/

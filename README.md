@@ -1,14 +1,15 @@
 # Receivable factoring (smart contracts)
 
-Reference Solidity stack for **invoice receivable factoring** on-chain: an **ERC-4626 vault** holds a single ERC-20 **asset**, buys **ERC-721 receivables** at a utilization-based discount, and tracks repayments, oracle settlement, and defaults. Fork this repo for the contracts; use the optional **React + wagmi** app in `apps/web` as a visual demo of vault + invoice flows.
+Reference Solidity stack for **invoice receivable factoring** on-chain: an **ERC-4626 vault** holds a single ERC-20 **asset**, buys **ERC-721 receivables** at a utilization-based discount, and tracks repayments, oracle settlement, and defaults. This repository is **contracts-first**: fork it for the Solidity, tests, and scripts—then wire your own frontend or automation.
 
 ## Where to read what
 
 | If you want… | Open… |
 |--------------|--------|
 | **What each contract is for**, deploy commands, Sepolia addresses | This **README** (you are here). |
-| **Real-world scenarios** (factoring, B2B pools, settlement patterns) | Sections **Real-world scenarios** and **Trust** below, plus the demo app’s **Docs & Chainlink** tab for Chainlink-specific notes. |
-| **Technical behavior** (states, roles, flows, Chainlink touchpoints) | **[`docs/`](docs/)** — start with [**`docs/STATE_MACHINE.md`**](docs/STATE_MACHINE.md). |
+| **Real-world scenarios** (factoring, B2B pools, settlement patterns) | Sections **Real-world scenarios** and **Trust** below. |
+| **Technical behavior** (states, roles, flows, Chainlink touchpoints) | **`docs/`** — start with **`docs/STATE_MACHINE.md`**. |
+| **How to build a dapp UI** | Section **Building a UI** below. |
 
 ## Real-world scenarios
 
@@ -17,7 +18,7 @@ Illustrative patterns only—not legal, compliance, or investment advice:
 - **SME factoring:** A business mints a receivable NFT, sells it to the pool for an immediate advance, and the debtor pays the pool (or an operator records settlement from banking / ERP data).
 - **B2B marketplaces:** Platform-issued invoices and a shared liquidity pool so LPs earn from a diversified book.
 - **Programmatic lifecycle:** Defaults and write-downs are enforced on-chain after due dates so LP share price reflects outcomes consistently.
-- **Off-chain payment → on-chain proof:** An **operator oracle** (demo) or **Chainlink Functions** (production-shaped) applies settlement when *your* approved policy says funds cleared.
+- **Off-chain payment → on-chain proof:** An **operator oracle** or **Chainlink Functions** applies settlement when *your* approved policy says funds cleared.
 
 ## What you get
 
@@ -34,11 +35,90 @@ Illustrative patterns only—not legal, compliance, or investment advice:
 
 **Trust:** Issuer, admin, oracle/operator, and any Functions JavaScript are trusted. Not audited—use for learning, prototypes, or as a baseline for your own review.
 
-**Real-world framing & security:** For Chainlink-specific setup and trust boundaries, use the demo app **Docs & Chainlink** tab; for formal state/flow notes, see **[`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md)**.
+**Chainlink:** Subscription setup, legacy vs `WithRepay` consumers, and Foundry settlement scripts are documented in **Send a Functions settlement** below. Do not put subscription secrets or unfunded Functions requesters in a public browser bundle.
+
+## Building a UI
+
+Integrators usually expose **flows**, not raw contract names. Here is a practical map.
+
+### 1. Which contracts to call
+
+| Goal | Contract | Notes |
+|------|-----------|--------|
+| LP deposit / withdraw | **`FactoringVault`** | Standard **ERC-4626**: `asset()`, `deposit`, `mint`, `withdraw`, `redeem`. Users must **`approve`** the vault on the ERC-20 `asset` before `deposit` / `mint`. |
+| Issue an invoice (NFT) | **`ReceivableNFT`** | **`mint(to, nominal, due, debtor, commitment, uri)`** — needs **`ISSUER_ROLE`**. Read terms with **`getTerms(tokenId)`** or **`terms`**. |
+| Sell invoice to pool | **`FactoringVault`** | Seller **`setApprovalForAll(vault, true)`** (or per-token approve), then **`purchaseReceivable(tokenId)`**. |
+| Debtor pays pool | **`FactoringVault`** | Debtor **`approve(vault, amount)`** on `asset`, then **`repay(tokenId, amount)`**. **`msg.sender` must be the position’s debtor** (snapshot at funding time). |
+| Off-chain payment recorded | **`OperatorOracle`** | Operator ( **`OPERATOR_ROLE`**) calls **`reportRepayment(tokenId, amount)`**, which **`transferFrom`s** the operator’s allowance into the vault and calls **`applyExternalSettlement`**. Operator must **`approve`** the oracle on `asset`. |
+| Mark overdue default | **`FactoringVault`** | **`markDefaulted(tokenId)`** — anyone can call **after maturity** while the position is **Active**. |
+| Automation keeper | **`FactoringAutomation`** | **`checkUpkeep`** / **`performUpkeep`** — forwards to **`markDefaulted`** (used with Chainlink Automation on live nets). |
+
+**Usually not from a public website:** **`sendSettlementRequest`** / **`sendSettlementRequestWithRepay`** on **`FunctionsSettlement`** — these need a **subscription-funded** signer with **`REQUESTER_ROLE`**; keep that in a **server, Foundry script, or KMS-backed wallet**, not in `NEXT_PUBLIC_*` / `VITE_*` env.
+
+### 2. ABIs and bytecode
+
+After `forge build`, pull JSON artifacts from **`out/`**:
+
+```text
+out/FactoringVault.sol/FactoringVault.json
+out/ReceivableNFT.sol/ReceivableNFT.json
+out/adapters/OperatorOracle.sol/OperatorOracle.json
+out/chainlink/FactoringAutomation.sol/FactoringAutomation.json
+out/chainlink/FunctionsSettlement.sol/FunctionsSettlement.json
+```
+
+Use the **`abi`** field with **ethers.js**, **viem**, **wagmi**, etc.
+
+You can also print an ABI to the terminal:
+
+```bash
+forge inspect FactoringVault abi
+forge inspect ReceivableNFT abi
+```
+
+### 3. Config your app needs
+
+Keep **at least**:
+
+- **RPC URL** for your chain (treat **browser-exposed** keys as public).
+- **Chain ID** (e.g. `11155111` Sepolia, `31337` Anvil).
+- **Contract addresses**: `FactoringVault`, `ReceivableNFT` (via **`vault.receivable()`**), `OperatorOracle`, `FactoringAutomation`, and optionally `FunctionsSettlement` for dashboards only.
+
+Source addresses from your **`forge script` logs**, **`broadcast/.../run-latest.json`**, or the [Recorded Sepolia deployment](#recorded-sepolia-deployment-chain-11155111) table when experimenting.
+
+### 4. Reads that power dashboards
+
+On **`FactoringVault`**:
+
+- **`totalAssets()`**, **`totalFaceOutstanding`**, **`asset()`**
+- **`positions(tokenId)`** → `status`, `maturity`, `debtor`, `remainingFace` (`status`: `0` None, `1` Active, `2` Repaid, `3` Defaulted)
+- **`peekNextDefaultable()`** — for “next upkeep” style UX
+
+On **`ReceivableNFT`**: **`getTerms(tokenId)`** for nominal / due / debtor when the NFT is not yet funded.
+
+**Decimals:** Always read **`decimals()`** on the vault **`asset`** when formatting amounts.
+
+### 5. Suggested UX order (happy path)
+
+1. Issuer mints receivable to seller.
+2. LP deposits into vault (optional but typical before purchase).
+3. Seller approves vault for NFT → **`purchaseReceivable`**.
+4. Debtor **`repay`** *or* operator **`reportRepayment`** *or* (backend) Functions fulfillment → **`applyExternalSettlement`**.
+5. If overdue and still active, **`markDefaulted`** (or Automation **`performUpkeep`**).
+
+### 6. Implementation tips
+
+- **Batch RPC calls** (viem **multicall**, ethers **`Multicall`**) for dashboards listing many `positions` / `terms`.
+- **Indexers:** For history and searching by debtor, use **The Graph**, **Subsquid**, or a warehouse fed from events (`ReceivablePurchased`, `RepaymentApplied`, `ReceivableDefaulted`, etc.).
+- **Wallets:** **WalletConnect / injected** for browsers; **privy / dynamic** patterns for onboarding—the vault does not care as long as you sign the right contract calls.
+- **Testing:** Run **Anvil** locally with deploy scripts, or **fork Sepolia** and point at the README reference addresses for read-only integration tests.
+- **Gas:** `purchaseReceivable` and first-time ERC-20 approves are multi-step; surface “approve then action” clearly in the UI.
+
+For the full state diagram and economics, see **[`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md)**.
 
 ## Fork & run (minimal)
 
-1. **Tooling:** [Foundry](https://book.getfoundry.sh/), Node 20+, wallet with ETH on target testnet.
+1. **Tooling:** [Foundry](https://book.getfoundry.sh/). Use **Node.js** only if you build a separate frontend.
 2. **Clone** with submodules, then build and test:
 
    ```bash
@@ -49,34 +129,17 @@ Illustrative patterns only—not legal, compliance, or investment advice:
    If you already cloned without `--recursive`, run: `git submodule update --init --recursive`.
 
 3. Run `forge install` (if needed), `forge build`, and `forge test`.
-4. **Deploy** (local or Sepolia) with the scripts in `script/`. Copy addresses into `.env` files.
-5. **UI:** `cd apps/web && npm install && npm run dev` — set `apps/web/.env` from [apps/web/.env.example](apps/web/.env.example).
+4. **Deploy** (local or Sepolia) with the scripts in `script/`. Copy addresses into `.env` for scripts (see [.env.example](.env.example)).
 
 ### Root `.env` (Foundry)
 
 See [.env.example](.env.example). You need **`PRIVATE_KEY`** and an RPC (`SEPOLIA_RPC_URL` or local). For Sepolia deploy: **`ASSET_TOKEN`**, **`FUNCTIONS_ROUTER`** ([Chainlink Functions supported networks](https://docs.chain.link/chainlink-functions/supported-networks)). Add **`ETHERSCAN_API_KEY`** if you use `forge script ... --verify`.
 
-### Web `.env` (public)
+### Finding contract addresses after deploy
 
-| Variable | Purpose |
-|----------|---------|
-| **`VITE_VAULT_ADDRESS`** | FactoringVault |
-| **`VITE_CHAIN_ID`** | `11155111` (Sepolia, default) or `31337` (Anvil) |
-| **`VITE_OPERATOR_ORACLE`** | OperatorOracle (operator panel in UI) |
-| **`VITE_AUTOMATION`** | FactoringAutomation (`performUpkeep` demo) |
-| **`VITE_FUNCTIONS_SETTLEMENT`** | Optional; shown in UI for reference / Etherscan |
-| **`VITE_FUNCTIONS_ROUTER`** | Display only |
-| **`VITE_SEPOLIA_RPC`** | Optional browser RPC (key is public if you use a provider URL) |
-
-Restart `npm run dev` after editing `.env`.
-
-### Where do `VITE_OPERATOR_ORACLE` and `VITE_AUTOMATION` come from?
-
-1. **Your own deploy:** run the Foundry deploy script for your target network. The broadcast output prints each contract address; you can also read `broadcast/<ScriptName>/<chainId>/run-latest.json` and copy `transactions[*].contractAddress` for **`OperatorOracle`** and **`FactoringAutomation`**. Paste those into `apps/web/.env` as `VITE_OPERATOR_ORACLE` and `VITE_AUTOMATION`.
-
-2. **Sepolia reference table (this repo):** the [Recorded Sepolia deployment](#recorded-sepolia-deployment-chain-11155111) section lists the same addresses. The demo UI also **falls back** to those addresses on chain `11155111` when the env vars are omitted or set to the zero address (`demoDefaults.ts`).
-
-3. **Block explorer:** on Sepolia, open the vault from the table, then follow “contract” links from deploy txs or use Etherscan’s “contract creator” view for your deployer.
+1. **Your own deploy:** use `forge script` logs or `broadcast/<ScriptName>/<chainId>/run-latest.json` and copy `transactions[*].contractAddress` for **`FactoringVault`**, **`ReceivableNFT`**, **`OperatorOracle`**, **`FactoringAutomation`**, **`FunctionsSettlement`**.
+2. **Sepolia reference:** see [Recorded Sepolia deployment](#recorded-sepolia-deployment-chain-11155111).
+3. **Block explorer:** open the vault, then trace contract creation / internal txs.
 
 ### Deploy commands (short)
 
@@ -101,22 +164,22 @@ Etherscan: prefix each with `https://sepolia.etherscan.io/address/`.
 
 ### Can I test Chainlink Functions + Automation on Sepolia?
 
-**Yes.** Sepolia is supported for both products, and this repo deploys **FunctionsSettlement** and **FactoringAutomation** against the same vault you use in the UI. There is no protocol reason you “can’t” test the full flow on Sepolia.
+**Yes.** Sepolia is supported for both products, and this repo deploys **FunctionsSettlement** and **FactoringAutomation** against the same vault.
 
 What is *not* automatic is the **Chainlink platform wiring**—that is always a separate step from `forge script`:
 
-| Piece | What you do on Sepolia | Why the demo website doesn’t replace this |
-|-------|------------------------|-------------------------------------------|
-| **Functions** | Create a **Functions subscription**, fund **test LINK**, add **`FunctionsSettlement`** as **consumer**. For the **reference Sepolia** address in this README, run **`SendFunctionsSettlement.s.sol`** (legacy **5-arg** function; repayment is embedded in generated JS from `FUNCTIONS_REPAY_WEI`). After **redeploying** the consumer from this repo, use **`SendFunctionsSettlementWithRepay.s.sol`** and two-arg JS. | The browser must not hold subscription secrets or run unfunded public requests from `VITE_*`. |
-| **Automation** | In the **Chainlink Automation** app, **register an upkeep** whose target is **`FactoringAutomation`**, set gas limits, and fund the upkeep with **LINK**. The network then calls **`checkUpkeep` / `performUpkeep`** when conditions are met. | The UI can call `performUpkeep` **manually**, but **scheduled, repeating** execution is Chainlink’s service; you register and pay for it on their side. |
+| Piece | What you do on Sepolia | Note |
+|-------|------------------------|------|
+| **Functions** | Create a **subscription**, fund **test LINK**, add **`FunctionsSettlement`** as **consumer**. For the **reference Sepolia** consumer, run **`SendFunctionsSettlement.s.sol`** (legacy **5-arg**; repayment embedded in generated JS). After **redeploying** the consumer from this repo, use **`SendFunctionsSettlementWithRepay.s.sol`** and two-arg JS. | Run requests from a **trusted wallet / backend**, not a public site. |
+| **Automation** | Register an **upkeep** on **`FactoringAutomation`**, fund **LINK**. | The network calls **`checkUpkeep` / `performUpkeep`**. |
 
-So: **full E2E testing** uses the Forge script that matches your consumer’s ABI, plus the **Automation UI** for the keeper.
+So: **full E2E testing** uses the Forge script that matches your consumer’s ABI, plus the **Automation** app for scheduled **`performUpkeep`**.
 
 ### Send a Functions settlement (Foundry)
 
 Prerequisites: subscription with **LINK**, **`FunctionsSettlement`** as **consumer**, **`REQUESTER_ROLE`** on the signer.
 
-**Reference README Sepolia** `FunctionsSettlement` (`0xa061…`) only has **`sendSettlementRequest(tokenId, subId, gasLimit, donId, source)`** — the script builds **inline JS** that reads **`args[0]`** only and bakes **`FUNCTIONS_REPAY_WEI`** into the source string (avoids the newer 6-argument selector your error hit).
+**Reference README Sepolia** `FunctionsSettlement` (`0xa061…`) only has **`sendSettlementRequest(tokenId, subId, gasLimit, donId, source)`** — the script builds **inline JS** that reads **`args[0]`** only and bakes **`FUNCTIONS_REPAY_WEI`** into the source string (avoids the newer 6-argument selector mismatch).
 
 | Variable | Notes |
 |----------|--------|
@@ -144,15 +207,11 @@ forge script script/SendFunctionsSettlementWithRepay.s.sol:SendFunctionsSettleme
 
 Uses `FUNCTIONS_JS_PATH` (default `script/chainlink/functions-settlement-source.js`). Response must ABI-encode `(uint256, uint256)`.
 
-## Demo app: proving the system end-to-end
+## Proving it works
 
-The UI in **`apps/web`** includes:
-
-1. **LP** — approve / deposit / redeem against the vault (ERC-4626).
-2. **Factoring** — mint receivable (needs **`ISSUER_ROLE`**), NFT approval + `purchaseReceivable`, debtor **`repay`**, operator **`reportRepayment`** (needs **`OPERATOR_ROLE`** + env addresses), **`markDefaulted`**, optional **`performUpkeep`** (set **`VITE_AUTOMATION`**).
-3. **Chainlink Functions** — subscription + consumer, then **`SendFunctionsSettlement.s.sol`** (reference legacy consumer) or **`SendFunctionsSettlementWithRepay.s.sol`** (redeployed consumer); response ABI-encodes two `uint256`s.
-
-**How you know it works:** follow the numbered steps with a funded wallet; metrics (`totalFaceOutstanding`, position status, etc.) update on refresh. **`forge test`** includes unit/fuzz/invariant tests plus **`SepoliaForkSmokeTest`** (live read against your deployed vault when RPC is available).
+- **`forge test`** — unit, fuzz, and invariant tests.
+- **`SepoliaForkSmokeTest`** — optional live read against a deployed vault when RPC is set (`forge test --match-contract SepoliaForkSmokeTest -vv`).
+- **`script/DevSmoke.s.sol`** — scripted flows after local deploy.
 
 ## Tests & analysis
 
@@ -171,9 +230,10 @@ forge test --match-contract SepoliaForkSmokeTest -vv
 src/           # Contracts (vault, NFT, pricing, oracle, chainlink)
 script/        # Deploy / smoke scripts
 test/          # Foundry tests (+ Sepolia fork smoke)
-apps/web/      # Vite + React demo
 docs/          # State machine & behavior notes
 ```
+
+If you still have a local **`apps/web/node_modules`** folder from an older checkout, it is no longer part of this repo—delete **`apps/web`** after closing any dev server that might lock native binaries on Windows.
 
 ## License
 
