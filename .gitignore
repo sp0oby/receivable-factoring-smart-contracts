@@ -1,0 +1,8 @@
+cache/
+out/
+broadcast/
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+.env
+apps/web/.env
