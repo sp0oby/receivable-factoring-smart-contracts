@@ -1,0 +1,2 @@
+# Normalize line endings for text files (avoids ^M / CRLF noise on GitHub).
+* text=auto eol=lf
