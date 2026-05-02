@@ -158,15 +158,15 @@ Latest table from **`DeploySepolia.s.sol`** (May 2026). If you deploy again, rep
 |------|---------|
 | Asset (SMA) | `0xA46Af17d1B3C0DfeeD0E5D8d6CEb8d49698D4de1` |
 | Functions router | `0xb83E47C2bC239B3bf370bc41e1459A34b41238D0` |
-| ReceivableNFT | `0x6FE9B7C10cbC3064F312FfA1197871F5A5E40030` |
-| FactoringVault | `0x4D168e17443454590ff97206789E458e457dFB81` |
-| OperatorOracle | `0x2207e3A3117F219636F42b9209d021b73811485C` |
-| FunctionsSettlement | `0xeB59985C4DfCbE6D7a54D909b3A43B0ABF8ae894` |
-| FactoringAutomation | `0xf410739Ee42CD97d18ed419Db739F0BB8CB21B6E` |
+| ReceivableNFT | `0x3C8dF638192ec7c7702B5a4C0146360958643d22` |
+| FactoringVault | `0x225b619a8f62A623803B73dbA4AA6E117e66bD00` |
+| OperatorOracle | `0xe1Ddfd748F6e00030504F128864C8B100985D166` |
+| FunctionsSettlement | `0x4ae782960C1402FBd776181D880F0bA3d05d1d2F` |
+| FactoringAutomation | `0x4E9082C1bebF1Dd9f91e94A0f0EB1F7dc0685894` |
 
 Etherscan: prefix each with `https://sepolia.etherscan.io/address/`.
 
-**Contract verification (Etherscan):** `ReceivableNFT`, `FactoringVault`, and `FactoringAutomation` for this table are verified ([NFT](https://sepolia.etherscan.io/address/0x6FE9B7C10cbC3064F312FfA1197871F5A5E40030#code), [vault](https://sepolia.etherscan.io/address/0x4D168e17443454590ff97206789E458e457dFB81#code), [automation](https://sepolia.etherscan.io/address/0xf410739Ee42CD97d18ed419Db739F0BB8CB21B6E#code)). **`OperatorOracle`** and **`FunctionsSettlement`** could not be verified against current `main`: the creation bytecode on-chain matches neither the pre-event (`a400a17`) nor the post-event (`8cb9b4e`) git revisions exactly—likely a deploy from an intermediate working tree. To verify them, either re-run `DeploySepolia` from a clean tagged commit and verify immediately, or submit the exact Standard JSON input / sources from the machine that broadcast the deploy. Use `cast abi-encode` with each contract’s constructor signature (see `broadcast/.../run-latest.json` `arguments`) and pass `--compiler-version v0.8.20+commit.a1b79de6 --evm-version shanghai` to match `foundry.toml`.
+**Contract verification:** With `ETHERSCAN_API_KEY` set, `forge script script/DeploySepolia.s.sol:DeploySepolia --rpc-url "$SEPOLIA_RPC_URL" --broadcast --verify` submits all five contracts using the **same** local compilation as the deploy, so Etherscan bytecode matches. Verified sources for this table: [ReceivableNFT](https://sepolia.etherscan.io/address/0x3C8dF638192ec7c7702B5a4C0146360958643d22#code), [FactoringVault](https://sepolia.etherscan.io/address/0x225b619a8f62A623803B73dbA4AA6E117e66bD00#code), [OperatorOracle](https://sepolia.etherscan.io/address/0xe1Ddfd748F6e00030504F128864C8B100985D166#code), [FunctionsSettlement](https://sepolia.etherscan.io/address/0x4ae782960C1402FBd776181D880F0bA3d05d1d2F#code), [FactoringAutomation](https://sepolia.etherscan.io/address/0x4E9082C1bebF1Dd9f91e94A0f0EB1F7dc0685894#code).
 
 ### Can I test Chainlink Functions + Automation on Sepolia?
 
