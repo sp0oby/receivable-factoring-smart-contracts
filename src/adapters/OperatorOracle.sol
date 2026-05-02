@@ -14,6 +14,8 @@ contract OperatorOracle is AccessControl {
 
     FactoringVault public immutable vault;
 
+    event RepaymentReported(uint256 indexed tokenId, uint256 amount, address indexed operator);
+
     constructor(address vault_, address admin) {
         vault = FactoringVault(vault_);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -25,5 +27,6 @@ contract OperatorOracle is AccessControl {
         IERC20 a = IERC20(vault.asset());
         a.safeTransferFrom(msg.sender, address(vault), amount);
         vault.applyExternalSettlement(tokenId, amount);
+        emit RepaymentReported(tokenId, amount, msg.sender);
     }
 }

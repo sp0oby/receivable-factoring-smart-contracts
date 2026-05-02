@@ -35,6 +35,8 @@ Illustrative patterns only—not legal, compliance, or investment advice:
 
 **Trust:** Issuer, admin, oracle/operator, and any Functions JavaScript are trusted. Not audited—use for learning, prototypes, or as a baseline for your own review.
 
+**Token & indexing:** The vault `asset` must behave like a normal ERC-20 (no fee-on-transfer, no rebasing); see NatSpec on `FactoringVault`. For subgraphs and dashboards, emit coverage includes purchase/repay/default on the vault, mint/burn on `ReceivableNFT`, admin pricing updates on the vault, operator repayments on `OperatorOracle`, and request/apply events on `FunctionsSettlement`.
+
 **Chainlink:** Subscription setup, legacy vs `WithRepay` consumers, and Foundry settlement scripts are documented in **Send a Functions settlement** below. Do not put subscription secrets or unfunded Functions requesters in a public browser bundle.
 
 ## Building a UI
@@ -150,15 +152,17 @@ See [.env.example](.env.example). You need **`PRIVATE_KEY`** and an RPC (`SEPOLI
 
 ### Recorded Sepolia deployment (chain 11155111)
 
+Latest table from **`DeploySepolia.s.sol`** (May 2026). If you deploy again, replace these from your `run-latest.json` / script logs.
+
 | Item | Address |
 |------|---------|
 | Asset (SMA) | `0xA46Af17d1B3C0DfeeD0E5D8d6CEb8d49698D4de1` |
 | Functions router | `0xb83E47C2bC239B3bf370bc41e1459A34b41238D0` |
-| ReceivableNFT | `0x203F3687dEf60bc54280b78E6fe0d66FD26Db731` |
-| FactoringVault | `0x4601B97eE914FDcd571546D48d6D5330B28928e4` |
-| OperatorOracle | `0xf0a7AA9d95793DA05Ec07EAe5DDa23C1982AF0E8` |
-| FunctionsSettlement | `0xa061E09e19e636E4B27D76c2fe62a7A9D160b760` |
-| FactoringAutomation | `0xaa0beeAcCDE24B6e2783181b9A1326f25120A800` |
+| ReceivableNFT | `0x6FE9B7C10cbC3064F312FfA1197871F5A5E40030` |
+| FactoringVault | `0x4D168e17443454590ff97206789E458e457dFB81` |
+| OperatorOracle | `0x2207e3A3117F219636F42b9209d021b73811485C` |
+| FunctionsSettlement | `0xeB59985C4DfCbE6D7a54D909b3A43B0ABF8ae894` |
+| FactoringAutomation | `0xf410739Ee42CD97d18ed419Db739F0BB8CB21B6E` |
 
 Etherscan: prefix each with `https://sepolia.etherscan.io/address/`.
 
@@ -170,7 +174,7 @@ What is *not* automatic is the **Chainlink platform wiring**—that is always a 
 
 | Piece | What you do on Sepolia | Note |
 |-------|------------------------|------|
-| **Functions** | Create a **subscription**, fund **test LINK**, add **`FunctionsSettlement`** as **consumer**. For the **reference Sepolia** consumer, run **`SendFunctionsSettlement.s.sol`** (legacy **5-arg**; repayment embedded in generated JS). After **redeploying** the consumer from this repo, use **`SendFunctionsSettlementWithRepay.s.sol`** and two-arg JS. | Run requests from a **trusted wallet / backend**, not a public site. |
+| **Functions** | Create a **subscription**, fund **test LINK**, add **`FunctionsSettlement`** (address in the table) as **consumer**. This deployment’s consumer supports **`sendSettlementRequestWithRepay`** (two string args + `functions-settlement-source.js`) and the legacy **`sendSettlementRequest`** (one arg; repayment baked into inline JS — **`SendFunctionsSettlement.s.sol`**). | Run requests from a **trusted wallet / backend**, not a public site. |
 | **Automation** | Register an **upkeep** on **`FactoringAutomation`**, fund **LINK**. | The network calls **`checkUpkeep` / `performUpkeep`**. |
 
 So: **full E2E testing** uses the Forge script that matches your consumer’s ABI, plus the **Automation** app for scheduled **`performUpkeep`**.
@@ -179,7 +183,7 @@ So: **full E2E testing** uses the Forge script that matches your consumer’s AB
 
 Prerequisites: subscription with **LINK**, **`FunctionsSettlement`** as **consumer**, **`REQUESTER_ROLE`** on the signer.
 
-**Reference README Sepolia** `FunctionsSettlement` (`0xa061…`) only has **`sendSettlementRequest(tokenId, subId, gasLimit, donId, source)`** — the script builds **inline JS** that reads **`args[0]`** only and bakes **`FUNCTIONS_REPAY_WEI`** into the source string (avoids the newer 6-argument selector mismatch).
+**This table’s** `FunctionsSettlement` supports **`sendSettlementRequestWithRepay`** (preferred: **`SendFunctionsSettlementWithRepay.s.sol`** + `script/chainlink/functions-settlement-source.js`). It also exposes the legacy **`sendSettlementRequest(tokenId, subId, gasLimit, donId, source)`** for one-arg JS — use **`SendFunctionsSettlement.s.sol`**, which embeds **`FUNCTIONS_REPAY_WEI`** in generated source. **Third-party deployments** may only implement one path; match the script to the ABI you actually deployed.
 
 | Variable | Notes |
 |----------|--------|
@@ -197,7 +201,7 @@ forge script script/SendFunctionsSettlement.s.sol:SendFunctionsSettlement \
   --broadcast -vvv
 ```
 
-**New consumer** (redeployed from this repo): also has **`sendSettlementRequestWithRepay`** + two `args`. Re-add this address as consumer, then:
+**Recommended:** `sendSettlementRequestWithRepay` + two `args`. Re-add the **consumer address from the table** to your subscription, then:
 
 ```bash
 forge script script/SendFunctionsSettlementWithRepay.s.sol:SendFunctionsSettlementWithRepay \
@@ -222,7 +226,13 @@ forge test
 forge test --match-contract SepoliaForkSmokeTest -vv
 ```
 
-[Slither](https://github.com/crytic/slither): `pip install slither-analyzer` → `slither . --exclude-dependencies` (Foundry on `PATH`). Project config: [slither.config.json](slither.config.json) / inline `slither-disable-*` where patterns are intentional.
+[Slither](https://github.com/crytic/slither): `pip install slither-analyzer`, ensure **`forge`** is on `PATH` (e.g. `~/.foundry/bin`), then from the repo root:
+
+```bash
+python -m slither . --config-file slither.config.json --compile-force-framework foundry
+```
+
+`pragma` / `solc-version` / dependency noise / informational **`reentrancy-events`** (events after external calls in oracle/Functions callbacks; vault paths use `nonReentrant`) are filtered via [`slither.config.json`](slither.config.json). Target **`0` high/medium findings** before a production release; open an issue if Slither reports anything else.
 
 ## Repository layout
 

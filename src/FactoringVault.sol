@@ -14,6 +14,14 @@ import {Pricing} from "./lib/Pricing.sol";
 
 /// @notice ERC-4626 vault that buys receivable NFTs at a utilization-based discount.
 /// @dev Position uses denormalized {maturity, debtor} at funding time to avoid external Term reads in hot paths.
+///
+/// Integrator assumptions (see project security/docs):
+/// - `asset` MUST be a standard ERC-20 with reliable `transfer`/`transferFrom` semantics: **no fee-on-transfer**
+///   and **no rebasing** balance. Otherwise `totalAssets()` and face accounting diverge from token balances.
+/// - Maturity and default use `block.timestamp` (not `block.number`), which is the correct timebase on L2s where
+///   `block.number` is not a seconds clock.
+/// - Share math / first-deposit edge cases: OpenZeppelin `ERC4626` v5+ applies virtual-asset inflation mitigation;
+///   still seed small initial liquidity or document virtual-offset behavior for production deploys.
 contract FactoringVault is ERC4626, AccessControl, ReentrancyGuard, IERC721Receiver {
     using SafeERC20 for IERC20;
 
@@ -47,6 +55,8 @@ contract FactoringVault is ERC4626, AccessControl, ReentrancyGuard, IERC721Recei
     );
     event RepaymentApplied(uint256 indexed tokenId, uint256 amount, uint256 remainingFace);
     event ReceivableDefaulted(uint256 indexed tokenId, uint256 loss);
+    event PricingParamsUpdated(uint16 baseDiscountBps, uint16 maxDiscountBps, uint16 slopeBps);
+    event MaxUtilizationBpsUpdated(uint16 maxUtilizationBps);
 
     error InvalidToken();
     error NotSeller();
@@ -74,10 +84,12 @@ contract FactoringVault is ERC4626, AccessControl, ReentrancyGuard, IERC721Recei
 
     function setPricingParams(Pricing.Params memory p) external onlyRole(DEFAULT_ADMIN_ROLE) {
         pricingParams = p;
+        emit PricingParamsUpdated(p.baseDiscountBps, p.maxDiscountBps, p.slopeBps);
     }
 
     function setMaxUtilizationBps(uint16 bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
         maxUtilizationBps = bps;
+        emit MaxUtilizationBpsUpdated(bps);
     }
 
     /// @dev Idle ERC-20 balance plus outstanding face value (until default write-off).

@@ -9,6 +9,7 @@ import {FactoringVault} from "../FactoringVault.sol";
 
 /// @title Chainlink Functions consumer that settles receivables from ABI-encoded responses.
 /// @dev Response must be `abi.encode(uint256 tokenId, uint256 repaidAmount)` from the DON JS.
+/// Request/fulfillment events are for indexers and operational monitoring; the DON also emits per Chainlink docs.
 contract FunctionsSettlement is FunctionsClient, AccessControl {
     using FunctionsRequest for FunctionsRequest.Request;
 
@@ -16,6 +17,9 @@ contract FunctionsSettlement is FunctionsClient, AccessControl {
 
     FactoringVault public immutable vault;
     mapping(bytes32 requestId => uint256 tokenId) public pendingTokenByRequest;
+
+    event SettlementRequestSent(bytes32 indexed requestId, uint256 indexed tokenId);
+    event SettlementApplied(bytes32 indexed requestId, uint256 indexed tokenId, uint256 repaidAmount);
 
     error UnexpectedRequestID(bytes32 requestId);
     error FulfillmentError(bytes err);
@@ -50,6 +54,7 @@ contract FunctionsSettlement is FunctionsClient, AccessControl {
         bytes memory cbor = req.encodeCBOR();
         requestId = _sendRequest(cbor, subscriptionId, callbackGasLimit, donId);
         pendingTokenByRequest[requestId] = tokenId;
+        emit SettlementRequestSent(requestId, tokenId);
     }
 
     /// @notice New deploys: passes `args[0]` = token id and `args[1]` = repayment in wei as decimal strings.
@@ -77,6 +82,7 @@ contract FunctionsSettlement is FunctionsClient, AccessControl {
         bytes memory cbor = req.encodeCBOR();
         requestId = _sendRequest(cbor, subscriptionId, callbackGasLimit, donId);
         pendingTokenByRequest[requestId] = tokenId;
+        emit SettlementRequestSent(requestId, tokenId);
     }
 
     // slither-disable-end reentrancy-benign
@@ -91,5 +97,6 @@ contract FunctionsSettlement is FunctionsClient, AccessControl {
         if (tokenId != expectedToken) revert UnexpectedRequestID(requestId);
 
         vault.applyExternalSettlement(tokenId, repaid);
+        emit SettlementApplied(requestId, tokenId, repaid);
     }
 }

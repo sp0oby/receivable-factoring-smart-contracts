@@ -20,6 +20,16 @@ contract ReceivableNFT is ERC721URIStorage, AccessControl {
     uint256 private _nextId = 1;
     mapping(uint256 tokenId => Terms) private _terms;
 
+    event ReceivableMinted(
+        uint256 indexed tokenId,
+        address indexed to,
+        uint256 nominal,
+        uint48 due,
+        address indexed debtor,
+        bytes32 commitment
+    );
+    event ReceivableBurned(uint256 indexed tokenId, address indexed vault);
+
     error ZeroAddress();
     error OnlyVault();
 
@@ -49,6 +59,7 @@ contract ReceivableNFT is ERC721URIStorage, AccessControl {
         if (bytes(tokenUri_).length > 0) {
             _setTokenURI(tokenId, tokenUri_);
         }
+        emit ReceivableMinted(tokenId, to, nominal, due, debtor, commitment);
     }
 
     /// @dev Called by trusted vault to burn settled receivables.
@@ -56,6 +67,7 @@ contract ReceivableNFT is ERC721URIStorage, AccessControl {
         if (msg.sender != vault) revert OnlyVault();
         _burn(tokenId);
         delete _terms[tokenId];
+        emit ReceivableBurned(tokenId, vault);
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721URIStorage, AccessControl) returns (bool) {

@@ -6,7 +6,7 @@ import {ScriptPk} from "./ScriptPk.sol";
 import {FunctionsSettlement} from "../src/chainlink/FunctionsSettlement.sol";
 
 /// @notice Broadcast `sendSettlementRequestWithRepay` — only for **newly deployed** `FunctionsSettlement` that includes this function.
-/// @dev Default JS path expects **two** string args (tokenId, repayWei). Reference Sepolia `0xa061…` uses `SendFunctionsSettlement.s.sol` instead.
+/// @dev Default JS path expects **two** string args (tokenId, repayWei). Legacy one-arg consumers use `SendFunctionsSettlement.s.sol` instead.
 contract SendFunctionsSettlementWithRepay is ScriptPk {
     bytes32 internal constant DON_ID_ETH_SEPOLIA =
         0x66756e2d657468657265756d2d7365706f6c69612d3100000000000000000000;

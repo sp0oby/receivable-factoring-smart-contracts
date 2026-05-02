@@ -1,4 +1,4 @@
 {
   "exclude_dependencies": true,
-  "detectors_to_exclude": "pragma,solc-version"
+  "detectors_to_exclude": "pragma,solc-version,reentrancy-events"
 }

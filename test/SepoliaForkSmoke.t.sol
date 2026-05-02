@@ -6,7 +6,7 @@ import {FactoringVault} from "../src/FactoringVault.sol";
 
 /// @dev Live Sepolia deployment smoke test (fork). Run: `forge test --match-contract SepoliaForkSmokeTest -vv`
 contract SepoliaForkSmokeTest is Test {
-    FactoringVault internal constant VAULT = FactoringVault(0x4601B97eE914FDcd571546D48d6D5330B28928e4);
+    FactoringVault internal constant VAULT = FactoringVault(0x4D168e17443454590ff97206789E458e457dFB81);
     address internal constant ASSET = 0xA46Af17d1B3C0DfeeD0E5D8d6CEb8d49698D4de1;
 
     function setUp() public {
