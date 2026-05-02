@@ -166,6 +166,8 @@ Latest table from **`DeploySepolia.s.sol`** (May 2026). If you deploy again, rep
 
 Etherscan: prefix each with `https://sepolia.etherscan.io/address/`.
 
+**Contract verification (Etherscan):** `ReceivableNFT`, `FactoringVault`, and `FactoringAutomation` for this table are verified ([NFT](https://sepolia.etherscan.io/address/0x6FE9B7C10cbC3064F312FfA1197871F5A5E40030#code), [vault](https://sepolia.etherscan.io/address/0x4D168e17443454590ff97206789E458e457dFB81#code), [automation](https://sepolia.etherscan.io/address/0xf410739Ee42CD97d18ed419Db739F0BB8CB21B6E#code)). **`OperatorOracle`** and **`FunctionsSettlement`** could not be verified against current `main`: the creation bytecode on-chain matches neither the pre-event (`a400a17`) nor the post-event (`8cb9b4e`) git revisions exactly—likely a deploy from an intermediate working tree. To verify them, either re-run `DeploySepolia` from a clean tagged commit and verify immediately, or submit the exact Standard JSON input / sources from the machine that broadcast the deploy. Use `cast abi-encode` with each contract’s constructor signature (see `broadcast/.../run-latest.json` `arguments`) and pass `--compiler-version v0.8.20+commit.a1b79de6 --evm-version shanghai` to match `foundry.toml`.
+
 ### Can I test Chainlink Functions + Automation on Sepolia?
 
 **Yes.** Sepolia is supported for both products, and this repo deploys **FunctionsSettlement** and **FactoringAutomation** against the same vault.
